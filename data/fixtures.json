@@ -1,0 +1,47 @@
+{
+  "4a5b7607c8825272": {
+    "confidence": 0.45,
+    "label": "avvikelse_i_patientjournal",
+    "rationale": "Två möjliga kategorier utan att kunna väga dem."
+  },
+  "7925ed3f8896d83c": {
+    "confidence": 0.74,
+    "label": "avvikelse_i_patientjournal",
+    "rationale": "Hela vårdtillfällets journal saknas, vilket är en dokumentationsavvikelse."
+  },
+  "9714649d895a5326": {
+    "confidence": 0.72,
+    "label": "avvikelse_i_patientjournal",
+    "rationale": "Ordet avvikelse utan annan kontext pekar på journalavvikelse."
+  },
+  "e2fb23701fd30e13": {
+    "confidence": 0.81,
+    "label": "avvikelse_i_patientjournal",
+    "rationale": "Inloggningen nämns först men det konkreta problemet är att anteckningen saknas."
+  },
+  "f08cb4eaff077b1e": {
+    "confidence": 0.78,
+    "label": "felaktig_inloggning",
+    "rationale": "Åtkomst nekad gäller behörigheten; journalen är bara objektet som nekas."
+  },
+  "997a49bc885b842d": {
+    "confidence": 0.72,
+    "label": "avvikelse_i_patientjournal",
+    "rationale": "En avvikelse ska utredas, men texten säger inte vad som hände."
+  },
+  "7403fec5ca821948": {
+    "confidence": 0.76,
+    "label": "felaktig_inloggning",
+    "rationale": "Det konkreta problemet är att personalen inte kom in, inte att något ska utredas."
+  },
+  "0ac48c55d55b5623": {
+    "confidence": 0.44,
+    "label": "ovrigt",
+    "rationale": "Teknisk service utan inloggning, åtkomst eller journalfråga - för låg konfidens."
+  },
+  "cdfd552217f2b50a": {
+    "confidence": 0.65,
+    "label": "avvikelse_i_patientjournal",
+    "rationale": "Dokumentationsavvikelse, men osäkert: inget exempel på vad som brister."
+  }
+}
