@@ -24,8 +24,8 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 KOMMANDON = {"klass": "klassificera ärenden och skriv beslut till stdout",
              "ko": "visa återstående granskningskö från en beslutsfil",
              "schema": "skriv ut besluts-schemat",
-             "matning": "precision/recall, konflikter och tröskelsvep på den syntetiska "
-                        "holdouten"}
+             "matning": "precision/recall, konflikter, tröskelsvep och säker hantering av "
+                        "tvetydiga fall på den syntetiska holdouten"}
 
 
 def _tröskel(värde: str) -> float:

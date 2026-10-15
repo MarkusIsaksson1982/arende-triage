@@ -11,6 +11,7 @@ import runpy
 import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 from triage import matning, privacy, rules, schema
@@ -19,6 +20,7 @@ from triage.model import load_fixtures, safe_call, stub_model, text_key
 from triage.pipeline import TriageEngine, apply_approvals, audit_record, read_jsonl, review_queue
 
 DATA = Path(__file__).resolve().parent.parent / "data"
+README = Path(__file__).resolve().parent.parent / "README.md"
 EXAMPLES = read_jsonl(DATA / "examples.jsonl")
 HOLDOUT = read_jsonl(DATA / "holdout.jsonl")
 APPROVALS = json.loads((DATA / "approvals.json").read_text(encoding="utf-8"))
@@ -27,7 +29,10 @@ TRASIGA = [dict(MODELSVAR, chain_of_thought="..."), dict(MODELSVAR, label="patie
            dict(MODELSVAR, confidence=2), dict(MODELSVAR, confidence=float("nan")),
            dict(MODELSVAR, confidence=float("inf")),
            {k: v for k, v in MODELSVAR.items() if k != "rationale"}]
-PNR = "19870312-4519"
+PNR = "19870312-4514"
+# Referensdatum för århundradet i tioåriga personnummer (injiceras, så att testerna
+# inte flyttar med kalendern).
+IDAG = date(2026, 10, 15)
 AUDITFÄLT = ("reviewer", "reviewed_by", "reviewed_at", "review_note", "note_masked",
              "previous_label", "new_label", "timestamp")
 
@@ -183,7 +188,7 @@ class TestEtiketter(unittest.TestCase):
 
 class TestIntegritet(unittest.TestCase):
     def test_personnummer_upptäcks(self):
-        for text in ["patient " + PNR, "850312-4519", "198703124519", "Patient 19870312+4519"]:
+        for text in ["patient " + PNR, "850312-4516", "198703124514", "Patient 19870312+4514"]:
             with self.subTest(text=text):
                 self.assertEqual(privacy.find_personnummer(text), [text.split()[-1]])
 
@@ -232,7 +237,7 @@ class TestIntegritet(unittest.TestCase):
                 self.assertIn(privacy.MASKER[kategori], maskad)
 
     def test_internt_ärendenummer_maskeras_inte(self):
-        maskad, kategorier = privacy.mask_text("Ärendet heter syn-012 och patient 19870312-4519.")
+        maskad, kategorier = privacy.mask_text("Ärendet heter syn-012 och patient 19870312-4514.")
         self.assertEqual(kategorier, ["personnummer"])
         self.assertIn("syn-012", maskad)
 
@@ -252,9 +257,9 @@ class TestIntegritet(unittest.TestCase):
         beslut = TriageEngine(model_fn=lambda t: sedda.append(t) or None).triage(
             "Kan inte logga in, felaktig session för " + PNR + ".", "syn-pnr")
         self.assertTrue(sedda, "modellen ska ha anropats")
-        self.assertNotIn("4519", sedda[0])
+        self.assertNotIn("4514", sedda[0])
         self.assertIn(privacy.MASK, sedda[0])
-        self.assertNotIn("4519", json.dumps(beslut, ensure_ascii=False))
+        self.assertNotIn("4514", json.dumps(beslut, ensure_ascii=False))
         self.assertIn("personnummer maskade", beslut["trace"][0])
 
     def test_modellen_ser_inga_namn_telefoner_eller_epost(self):
@@ -274,15 +279,15 @@ class TestIntegritet(unittest.TestCase):
                          ["epost", "identifierare", "namn", "personnummer", "telefon"])
 
     def test_rå_text_förekommer_aldrig_i_beslutet(self):
-        rå = "Kan inte logga in med 19870312-4519 eftersom kontot är låst."
+        rå = "Kan inte logga in med 19870312-4514 eftersom kontot är låst."
         ut = json.dumps(triage(rå, "syn-002"), ensure_ascii=False)
         self.assertNotIn(rå, ut)
-        self.assertNotIn("4519", ut)
+        self.assertNotIn("4514", ut)
 
     def test_notat_maskeras(self):
-        notat = "Kontakta Anna Svensson på 070-174 06 05 angående patient 19870312-4519."
+        notat = "Kontakta Anna Svensson på 070-174 06 05 angående patient 19870312-4514."
         maskat = privacy.mask_note(notat)
-        for hemligt in ("Anna Svensson", "070-174 06 05", "4519"):
+        for hemligt in ("Anna Svensson", "070-174 06 05", "4514"):
             with self.subTest(hemligt=hemligt):
                 self.assertNotIn(hemligt, maskat)
         self.assertIn(privacy.NAMN_MASK, maskat)
@@ -297,7 +302,7 @@ class TestIntegritet(unittest.TestCase):
     def test_sanitize_maskerar_djupt(self):
         gömda = {"a": ["text " + PNR, {"b": PNR}], "c": PNR, "d": 3}
         rengat = privacy.sanitize(gömda)
-        self.assertNotIn("4519", json.dumps(rengat, ensure_ascii=False))
+        self.assertNotIn("4514", json.dumps(rengat, ensure_ascii=False))
         self.assertEqual(rengat["d"], 3)
 
 
@@ -554,11 +559,11 @@ class TestAudit(unittest.TestCase):
     def test_audit_notaten_maskeras(self):
         notat = {"syn-013": {"label": "avvikelse_i_patientjournal", "reviewer": "granskare-2",
                              "reviewed_at": "2026-02-03T10:11:00Z",
-                             "note": "Kontakta dr Lindqvist på 070-174 06 05 om 19870312-4519."}}
+                             "note": "Kontakta dr Lindqvist på 070-174 06 05 om 19870312-4514."}}
         _, audit = apply_approvals(alla_beslut(), notat)
         self.assertEqual(len(audit), 1)
         post = audit[0]
-        for hemligt in ("Lindqvist", "070-174 06 05", "4519"):
+        for hemligt in ("Lindqvist", "070-174 06 05", "4514"):
             with self.subTest(hemligt=hemligt):
                 self.assertNotIn(hemligt, post["note_masked"])
         self.assertIn(privacy.NAMN_MASK, post["note_masked"])
@@ -567,7 +572,7 @@ class TestAudit(unittest.TestCase):
         """Notatets fritext får inte finnas i beslutet - bara en hänvisning till audit."""
         notat = {"syn-013": {"label": "avvikelse_i_patientjournal", "reviewer": "granskare-2",
                              "reviewed_at": "2026-02-03T10:11:00Z",
-                             "note": "Kontakta dr Lindqvist på 070-174 06 42 om 19870312-4519, "
+                             "note": "Kontakta dr Lindqvist på 070-174 06 42 om 19870312-4514, "
                                      "se markör xyz987."}}
         beslut, audit = apply_approvals(alla_beslut(), notat)
         self.assertEqual(len(audit), 1)
@@ -575,7 +580,7 @@ class TestAudit(unittest.TestCase):
         self.assertEqual(len(granskade), 1)
         beslutet = granskade[0]
         fritext = beslutet["rationale"] + " " + " ".join(beslutet["trace"])
-        for hemligt in ("Kontakta", "Lindqvist", "070-174 06 42", "4519", "markör", "xyz987",
+        for hemligt in ("Kontakta", "Lindqvist", "070-174 06 42", "4514", "markör", "xyz987",
                         privacy.NAMN_MASK, privacy.TELEFON_MASK, privacy.MASK):
             with self.subTest(hemligt=hemligt):
                 self.assertNotIn(hemligt, fritext)
@@ -815,7 +820,7 @@ class TestCli(unittest.TestCase):
             sys.argv = argv
 
     def test_stdout_innehåller_inga_identifierare(self):
-        med_text = ("Patient Anna Svensson kan inte logga in för 19870312-4519 "
+        med_text = ("Patient Anna Svensson kan inte logga in för 19870312-4514 "
                     "(felaktig session), tel 070-174 06 05.")
         with tempfile.TemporaryDirectory() as tmp:
             indata = Path(tmp) / "in.jsonl"
@@ -824,9 +829,189 @@ class TestCli(unittest.TestCase):
             ut = io.StringIO()
             with contextlib.redirect_stdout(ut), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(main(["klass", "-i", str(indata)]), 0)
-            for hemligt in ("4519", "Anna", "Svensson", "070-123", med_text):
+            for hemligt in ("4514", "Anna", "Svensson", "070-123", med_text):
                 with self.subTest(hemligt=hemligt):
                     self.assertNotIn(hemligt, ut.getvalue())
+
+
+
+class TestRunda9(unittest.TestCase):
+    """Runda 9 portad från rotversionen: Luhn/århundrade/samordningsnummer, telefon, säker hantering."""
+
+    IDAG = date(2026, 1, 1)
+
+    def setUp(self):
+        self.m = matning.utvardera(HOLDOUT)
+
+    def test_bindestreck_och_plus_ger_hundra_årsgränsen(self):
+        """'-' = under 100 år, '+' = 100 år eller mer, båda med giltig Luhn."""
+        self.assertEqual(privacy.find_personnummer("260115-0010", IDAG), ["260115-0010"],
+                         "två siffror och '-' ger det aktulla århundradet (2026)")
+        self.assertEqual(privacy.find_personnummer("260115+0010", IDAG), ["260115+0010"],
+                         "samma siffror med '+' läses som 1926")
+        self.assertEqual(privacy.find_personnummer("000229+0013", IDAG), [],
+                         "med '+' blir 000229 1900-02-29, som inte finns")
+
+    def test_datum_belopp_och_ordernummer_maskeras_inte_som_telefon(self):
+        for text in ["2000-02-29", "4500,00 kr", "order 1234567890", "070174",
+                     "12345678901", "patient 19870312-4514"]:
+            with self.subTest(text=text):
+                maskad, kategorier = privacy.mask_text(text)
+                self.assertNotIn("telefon", kategorier,
+                                 "ett tal som inte är svenskt numrformat ska inte maskas")
+                if "personnummer" not in kategorier:
+                    self.assertEqual(kategorier, [])
+                    self.assertEqual(maskad, text)
+
+    def test_foedda_pa_2000tal_och_skottdag(self):
+        """2000 är ett skottår: 29 februari ska hittas, både i 10- och 12-sifferform."""
+        for pnr in ["20000229-0013", "000229-0013", "240229-0015", "0002290013",
+                    "990228-0008"]:
+            with self.subTest(pnr=pnr):
+                self.assertEqual(privacy.find_personnummer("pnr " + pnr, IDAG), [pnr])
+        for pnr in ["20010229-0013", "19990229-0005","19000229-0013"]:
+            with self.subTest(pnr=pnr):
+                self.assertEqual(privacy.find_personnummer("pnr " + pnr, IDAG), [],
+                                 "29 februari finns bara i skottår")
+
+    def test_luhn_avvisar_fel_kontrollsiffra(self):
+        """Samma datum, en kontrollsiffra fel: den ena hittas och den andra inte."""
+        for pnr in ["20000229-0013", "000229-0013", "0002290013", "19260115-0010"]:
+            with self.subTest(pnr=pnr):
+                self.assertEqual(privacy.find_personnummer("pnr " + pnr, IDAG), [pnr])
+        for pnr in ["20000229-0014", "000229-0012", "0002290012", "19260115-0011"]:
+            with self.subTest(pnr=pnr):
+                self.assertEqual(privacy.find_personnummer("pnr " + pnr, IDAG), [],
+                                 "kontrollsiffran ska räcka för att maskas")
+
+    def test_rad_utan_acceptabla_utfall_är_aldrig_säker(self):
+        beslut = {"label": rules.JOURNAL, "source": "rules", "needs_human_review": True}
+        for case in ({}, {"ambiguous": True}, {"ambiguous": True, "acceptable": []}):
+            with self.subTest(case=case):
+                self.assertFalse(matning._säker(beslut, case),
+                                 "utan dokumenterade acceptable är inget utfall godkänt")
+        self.assertTrue(matning._säker(beslut, {"acceptable": ["granskning"]}))
+        self.assertTrue(matning._säker(dict(beslut, source="abstain"),
+                                       {"acceptable": ["abstain"]}))
+        self.assertFalse(matning._säker(dict(beslut, needs_human_review=False, source="rules"),
+                                        {"acceptable": ["granskning", "abstain"]}))
+
+    def test_rapporten_redovisar_säker_hantering_separat(self):
+        text = matning.rapport(self.m)
+        self.assertIn("säker hantering av tvetydiga fall: 3/3 (100%)", text)
+        self.assertIn("precision 1.00 | recall (makro) 0.88 | träffsäkerhet 0.86", text)
+
+    def test_samordningsnummer_adderar_sextio(self):
+        """Samordningsnummer har dagen +60: 61-91 är den 1:a-31:a."""
+        for pnr in ["850372-0016", "19850372-0016", "870391-0003"]:
+            with self.subTest(pnr=pnr):
+                self.assertEqual(privacy.find_personnummer("pnr " + pnr, IDAG), [pnr])
+        self.assertEqual(privacy.find_personnummer("000292-0015", IDAG), [],
+                         "dag 92 är inte ett samordningsnummer och inte ett datum")
+
+    def test_svep_redovisar_säker_hantering_per_tröskel(self):
+        for rad in self.m["svep"]["rader"]:
+            with self.subTest(tröskel=rad["tröskel"]):
+                self.assertEqual(rad["säker_hantering_andel"], 1.0)
+                self.assertGreaterEqual(rad["säker_hantering_andel"], 0.0)
+                self.assertLessEqual(rad["säker_hantering_andel"], 1.0)
+        self.assertIn("säker", matning._svep_rader(self.m["svep"])[-1])
+
+    def test_säker_hantering_följer_acceptable_och_inte_omvänd(self):
+        """Ett tvetydigt fall som besvaras utan granskning är inte säkert hanterat."""
+        fall = [{"case_id": "syn-tv", "text": "Kan inte logga in, felaktigt lösenord.",
+                 "expected_label": rules.JOURNAL, "ambiguous": True,
+                 "acceptable": [rules.JOURNAL, "abstain", "granskning"],
+                 "motivering": "syntetiskt tvetydigt fall"}]
+        m = matning.utvardera(fall)
+        self.assertEqual(m["säker_hantering"],
+                         {"antal": 1, "säkert": 0, "andel": 0.0, "osäkra": ["syn-tv"]},
+                         "kedjan svarade utan granskning - det är inte säker hantering")
+        self.assertIn("syn-tv", matning.rapport(m))
+
+    def test_säker_hantering_är_ett_eget_mått(self):
+        """Säker hantering mäter de tvetydiga fallen - och rörar inte de strikta måtten."""
+        säkert = self.m["säker_hantering"]
+        self.assertEqual((säkert["antal"], säkert["säkert"]), (3, 3))
+        self.assertEqual(säkert["andel"], 1.0)
+        self.assertEqual(säkert["osäkra"], [])
+        for rad in self.m["rader"]:
+            if rad["case_id"] in ("hol-14", "hol-15", "hol-19"):
+                with self.subTest(case=rad["case_id"]):
+                    self.assertTrue(rad["ambiguous"])
+                    self.assertTrue(rad["säker"], "avstående eller granskning är säkert")
+        self.assertEqual(self.m["fel"], ["hol-14", "hol-15", "hol-19"])
+        self.assertEqual(self.m["träffsäkerhet"],
+                         round(sum(1 for r in self.m["rader"] if r["korrekt"]) / len(HOLDOUT), 3))
+        self.assertEqual(self.m["precision"], 1.0)
+        self.assertEqual(self.m["recall"], 0.875)  # fyra etiketter: obehorig_atkomst 4/4 lyfter makro-recall
+
+    def test_telefon_i_mobil_och_46_form(self):
+        for nummer in ["070-174 06 05","0701740605","+46 70 174 06 05","+46701740605",
+                       "070-174 06 99", "070 174 06 42"]:
+            with self.subTest(nummer=nummer):
+                maskad, kategorier = privacy.mask_text("Ring " + nummer + " imorgon.")
+                self.assertEqual(kategorier, ["telefon"])
+                self.assertEqual(maskad, "Ring " + privacy.TELEFON_MASK + " imorgon.")
+
+    def test_tvetydiga_fall_är_markerade_med_motivering(self):
+        """Varje tvetydig rad ska säga VARFÖR den är tvetydig och vad som är godkänt."""
+        tvetydiga = {"hol-14", "hol-15", "hol-19"}
+        for fall in HOLDOUT:
+            with self.subTest(case=fall["case_id"]):
+                if fall["case_id"] not in tvetydiga:
+                    self.assertNotIn("ambiguous", fall,
+                                     "en entydig rad ska inte märkas som tvetydig")
+                    continue
+                self.assertTrue(fall["ambiguous"])
+                self.assertTrue(fall["acceptable"], "vilka utfall som är godkända ska stå i raden")
+                self.assertTrue(fall["motivering"].strip(), "tvetydigheten ska motiveras")
+                self.assertEqual(fall["expected_label"], rules.JOURNAL,
+                                 "guldetiketten ändras inte - den mäts mot stigningen")
+                self.assertIn("abstain", fall["acceptable"])
+                self.assertIn("granskning", fall["acceptable"])
+
+    def test_århundradet_läses_av_referensdatumet(self):
+        """Samma tio siffror, olika århundrade beroende på referensdatumet.
+
+        00 02 29 är 2000-02-29 (skottår) eller 1900-02-29 (inte skottår), så testet
+        kan skilja århundradet utan att gissa.
+        """
+        self.assertEqual(privacy.find_personnummer("000229-0013", IDAG), ["000229-0013"])
+        self.assertEqual(privacy.find_personnummer("000229-0013", date(1901, 3, 1)), [],
+                         "1900 var inte skottår, så det går inte att hitta 29 februari där")
+
+
+class TestReadmeRunda9(unittest.TestCase):
+    """README ska beskriva den mätning som faktiskt körs (portat från roten, fyra etiketter)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.m = matning.utvardera(HOLDOUT)
+
+    def test_readme_förklarar_granskningskön(self):
+        readme = " ".join(README.read_text(encoding="utf-8").split())
+        for bit in ("76", "100", "1,25–2,5 timmar", "tröskel", "recall", "granskningskön",
+                    "informationssäkerhetssamordnare", "behörighetsansvarig",
+                    "Patientdatalagen (2008:355) 4 kap.", "logguppföljning"):
+            with self.subTest(bit=bit):
+                self.assertIn(bit, readme)
+
+    def test_readmes_mätetal_stämmer_med_körningen(self):
+        readme = " ".join(README.read_text(encoding="utf-8").split())
+        m = self.m
+        self.assertIn(
+            "precision {:.2f}, makro-recall {:.2f}, träffsäkerhet {:.2f}, abstain {:.0f} %".format(
+                m["precision"], m["recall"], m["träffsäkerhet"], 100 * m["abstain_andel"]), readme)
+        self.assertIn("granskningskö {:.0f} %, {} konflikt av {} fall".format(
+            100 * m["granskningsandel"], m["konflikter"]["antal"], m["antal"]), readme)
+        self.assertIn("{} av {} ({:.0f} %)".format(m["säker_hantering"]["säkert"],
+                                                   m["säker_hantering"]["antal"],
+                                                   100 * m["säker_hantering"]["andel"]), readme)
+        låg, hög = m["svep"]["rader"][0], m["svep"]["rader"][-1]
+        for rad in (låg, hög):
+            self.assertIn("vid {} är recall {:.2f} och {:.0f} % avstår".format(
+                rad["tröskel"], rad["recall"], 100 * rad["abstain_andel"]), readme)
 
 
 if __name__ == "__main__":

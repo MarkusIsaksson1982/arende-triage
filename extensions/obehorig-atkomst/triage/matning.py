@@ -5,6 +5,13 @@ granskningsandel - lokalt, utan nätverk och utan träningsdata. Måtetalet gäl
 etikett kedjan föreslår (före mänsklig granskning); "övrigt" räknas inte som positiv
 klass, för etiketten betyder "oklassat" och inte "inget hände". Holdouten är
 handskriven och liten: ett rökprov mot regressioner, inte ett prestandatest.
+
+Några fall är medvetat tvetydiga och bär `ambiguous`, `acceptable` och `motivering`
+i holdouten. De räknas i ett eget mätetal, säker hantering: ett tvetydigt fall är
+säkert när kedjan avstår eller lägger det i granskningskön, aldrig när den gissar
+en etikett och låter den passera. De strikta måtten (precision, recall, träffsäkerhet)
+behåller sina definitioner och påverkas inte - att ändra ett tvetydigt fall från ett
+miss till en träff skulle bara höja siffrorna utan att säga något om kedjan.
 """
 from __future__ import annotations
 
@@ -33,7 +40,24 @@ def utvardera(fall: list[dict], motor: TriageEngine | None = None,
             "granskningsandel": _andel(sum(1 for r in rader if r["review"]), n),
             "konflikter": _konflikter(rader),
             "svep": tröskelsvep(fall, trösklar=trösklar, modell=motor.model_fn),
-            "fel": [r["case_id"] for r in rader if not r["korrekt"]]}
+            "fel": [r["case_id"] for r in rader if not r["korrekt"]],
+            "säker_hantering": _säker_hantering(rader)}
+
+
+def _säker_hantering(rader: list[dict]) -> dict:
+    """Säker hantering av de tvetydiga fallen - ett eget mätetal, inte en del av recall.
+
+    Ett fall är säkert hanterat när kedjan INTE låter det passera: antingen avstår
+    den (source == "abstain") eller skickar det till mänsklig granskning. Om
+    kedjan råkar landa rätt etikett räknas det också, eftersom rätt etikett står i
+    fallets `acceptable`-mängd. Måtetalet gäller bara de rader som är markerade
+    `ambiguous`, så att ett entydigt fall inte kan göra siffran fin.
+    """
+    tvetydiga = [r for r in rader if r["ambiguous"]]
+    säkra = [r for r in tvetydiga if r["säker"]]
+    return {"antal": len(tvetydiga), "säkert": len(säkra),
+            "andel": _andel(len(säkra), len(tvetydiga)),
+            "osäkra": [r["case_id"] for r in tvetydiga if not r["säker"]]}
 
 
 def _klassade(per_etikett: dict) -> dict:
@@ -47,16 +71,39 @@ def _mikro_precision(per_etikett: dict) -> float:
     return _andel(tp, tp + fp)
 
 
+def _säker(beslut: dict, case: dict) -> bool:
+    """Är ett tvetydigt fall hanterat säkert? Jämför utfallet med `acceptable`.
+
+    Holdouten avgör per fall vilka utfall som är försvarbara: etiketten i
+    `acceptable`, "abstain" om kedjan avstår, "granskning" om fallet hamnar i
+    granskningskön. En rad utan `acceptable` räknas aldrig som säker - då finns det
+    ingen dokumenterad grund att godkänna något utfall.
+    """
+    acceptable = set(case.get("acceptable") or ())
+    if not acceptable:
+        return False
+    utfall = {beslut["label"]}
+    if beslut["source"] == "abstain":
+        utfall.add("abstain")
+    if beslut["needs_human_review"]:
+        utfall.add("granskning")
+    return bool(utfall & acceptable)
+
+
 def _rader(fall: list[dict], motor: TriageEngine) -> list[dict]:
     rader = []
     for case in fall:
         beslut = motor.triage(case["text"], case.get("case_id", "unknown"))
-        rader.append({"case_id": case.get("case_id", "unknown"), "expected": case["expected_label"],
-                      "predicted": beslut["label"], "source": beslut["source"],
-                      "review": beslut["needs_human_review"], "disagreement": beslut["disagreement"],
-                      "regelns_topp": beslut.get("rule_top_label"),
-                      "modellens_forslag": beslut.get("proposed_label"),
-                      "korrekt": beslut["label"] == case["expected_label"]})
+        rad = {"case_id": case.get("case_id", "unknown"), "expected": case["expected_label"],
+               "predicted": beslut["label"], "source": beslut["source"],
+               "review": beslut["needs_human_review"], "disagreement": beslut["disagreement"],
+               "regelns_topp": beslut.get("rule_top_label"),
+               "modellens_forslag": beslut.get("proposed_label"),
+               "korrekt": beslut["label"] == case["expected_label"],
+               "ambiguous": bool(case.get("ambiguous", False)),
+               "acceptable": list(case.get("acceptable") or ())}
+        rad["säker"] = _säker(beslut, case)
+        rader.append(rad)
     return rader
 
 
@@ -112,7 +159,8 @@ def tröskelsvep(fall: list[dict], trösklar: tuple = TRÖSKLAR, modell=None) ->
                                               len(mätning) or 1),
                       "granskningsandel": _andel(sum(1 for r in mätning if r["review"]),
                                                  len(mätning) or 1),
-                      "konflikter": sum(1 for r in mätning if r["disagreement"])})
+                      "konflikter": sum(1 for r in mätning if r["disagreement"]),
+                      "säker_hantering_andel": _säker_hantering(mätning)["andel"]})
     return {"trösklar": [round(float(t), 2) for t in trösklar], "rader": rader}
 
 
@@ -124,6 +172,10 @@ def rapport(matning: dict) -> str:
              "abstain {:.0%} | kvar i granskningskö {:.0%} | fel: {}".format(
                  matning["abstain_andel"], matning["granskningsandel"],
                  ", ".join(matning["fel"]) or "inga"),
+             "säker hantering av tvetydiga fall: {}/{} ({:.0%}) – osäkra: {}".format(
+                 matning["säker_hantering"]["säkert"], matning["säker_hantering"]["antal"],
+                 matning["säker_hantering"]["andel"],
+                 ", ".join(matning["säker_hantering"]["osäkra"]) or "inga"),
              "", "{:<28} {:>3} {:>3} {:>3} {:>9} {:>6}".format("etikett", "tp", "fp", "fn",
                                                              "precision", "recall")]
     for etikett, m in sorted(matning["per_etikett"].items()):
@@ -164,8 +216,9 @@ def _svep_rader(svep: dict) -> list[str]:
             delar.append("{:.1f}: p {:.2f} r {:.2f} avstående {:.2f}".format(
                 rad["tröskel"], m["precision"], m["recall"], rad["abstain_andel"]))
         rader.append("    " + " | ".join(delar))
-    totals = " | ".join("{:.1f}: p {:.2f} r {:.2f} avst {:.2f} konfl {:.0f}".format(
-        rad["tröskel"], rad["precision"], rad["recall"], rad["abstain_andel"], rad["konflikter"])
+    totals = " | ".join("{:.1f}: p {:.2f} r {:.2f} avst {:.2f} konfl {:.0f} säker {:.2f}".format(
+        rad["tröskel"], rad["precision"], rad["recall"], rad["abstain_andel"], rad["konflikter"],
+        rad["säker_hantering_andel"])
         for rad in svep["rader"])
     rader.append("  totalt: " + totals)
     return rader

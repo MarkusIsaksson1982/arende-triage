@@ -8,11 +8,11 @@ that is its own case type under Patientdatalagen (2008:355) 4 kap. – it belong
 (behörighetsansvarig / informationssäkerhetssamordnare), not to password support. This extension gives it its own
 label, `obehorig_atkomst`, always routed to human review, so it becomes visible in metrics and in the review queue.
 
-**Status.** This is a self-contained copy of the package with four labels (86 tests:
-`cd extensions/obehorig-atkomst && python3 -m unittest discover -s tests`). It is based on the iteration *before*
-the latest fixes in the root version, so it does **not** yet include: Luhn/century/samordningsnummer validation of
-personnummer, the tightened phone pattern, the separate "safe handling of ambiguous cases" metric and the
-review-queue cost section. Port those from the root before using it as more than a comparison.
+**Status.** This is a self-contained copy of the package with four labels (101 tests:
+`cd extensions/obehorig-atkomst && python3 -m unittest discover -s tests`). It now carries the round-9 fixes of the
+root version: Luhn/century/samordningsnummer validation of personnummer, the tightened phone pattern, the separate
+"safe handling of ambiguous cases" metric and the review-queue cost section. `triage/privacy.py` and
+`triage/matning.py` are identical to the root; the label-specific code (`rules.py`, `schema.py`, `pipeline.py`) is not.
 
 **Apply:** run this package instead of the root one (`cd extensions/obehorig-atkomst && python3 -m triage klass`),
 or port the label into the root code: add `ACCESS = "obehorig_atkomst"` and its pattern block in `triage/rules.py`
@@ -35,7 +35,7 @@ skarp gräns mellan regler, språkmodell och människa.
 ## Kör det
 
 ```bash
-python3 -m unittest discover -s tests          # 86 tester, offline, skriver bara till tempfile
+python3 -m unittest discover -s tests          # 101 tester, offline, skriver bara till tempfile
 python3 -m triage klass                        # klassificera data/examples.jsonl -> stdout
 python3 -m triage ko -i /tmp/beslut.jsonl      # granskningskön, med svenska etiketter
 python3 -m triage matning                      # precision/recall, konflikter, tröskelsvep
@@ -106,9 +106,25 @@ aldrig på konfidenssiffran.
 21 syntetiska holdoutfall: precision, recall per etikett, träffsäkerhet, abstain- och granskningsandel,
 **regel/modell-konflikter** (antal och per par) och ett **tröskelsvep** (0.5/0.6/0.7/0.8/0.9) med precision,
 recall och avstående andel per etikett. Nu: precision 1.00, makro-recall 0.88, träffsäkerhet 0.86, abstain 29 %,
-1 konflikt av 21 fall. Svepet visar avvägningen: vid 0.5 är recall 0.92 och 24 % avstår, vid 0.9 är recall 0.78
-och 38 % avstår – färre fel, mer till människa. `ovrigt` räknas inte som positiv klass; holdouten är liten och
-handskriven, alltså ett rökprov och inte ett prestandatest.
+granskningskö 76 %, 1 konflikt av 21 fall. Svepet visar avvägningen: vid 0.5 är recall 0.92 och 24 % avstår, vid 0.9
+är recall 0.78 och 38 % avstår – färre fel, mer till människa. `ovrigt` räknas inte som positiv klass; holdouten är
+liten och handskriven, alltså ett rökprov och inte ett prestandatest.
+
+**Säker hantering** är ett eget mätetal, inte en del av de strikta talen. Tre fall (hol-14, hol-15, hol-19) är
+medvetat tvetydiga: de bär `ambiguous`, `acceptable` och `motivering` i `data/holdout.jsonl`. Ett tvetydigt fall
+är säkert hanterat när kedjan avstår eller lägger fallet i granskningskön – aldrig när hon gissar en etikett och
+låter den passera. Nu: **3 av 3 (100 %)**. De strikta måtten ovan står kvar oförändrade, och de tre fallen är
+fortfarande miss där.
+
+### Vad granskningskön på 76 % betyder i praktiken
+
+76 % är en arbetsmängd, inte en siffra: tar man 100 ärenden en dag går 76 till en människa. På 1–2 minuter per
+ärende blir det ungefär 1,25–2,5 timmars granskningstid om dagen. Kön växer med tröskeln, inte bara med reglerna:
+en lägre tröskel ger högre recall (0.92 vid 0.5) och mindre avstående, en högre ger lägre recall (0.78 vid 0.9) och
+mer avstående. Eftersom även ett avstående hamnar i granskningskön byter tröskeln recall mot mer kö, inte mot färre
+ärenden hos människan. Etiketten `obehorig_atkomst` ligger alltid i kön oavsett tröskel och hör till
+informationssäkerhetssamordnare/behörighetsansvarig enligt **Patientdatalagen (2008:355) 4 kap.**, med
+logguppföljning.
 
 ## Integritet
 
@@ -162,5 +178,5 @@ sjunken etikett inte gör.
 
 `triage/`: `schema.py`, `privacy.py`, `rules.py`, `model.py`, `pipeline.py`, `matning.py`, `cli.py`. `data/`:
 `examples.jsonl` (18 ärenden), `holdout.jsonl` (21 mätfall), `fixtures.json` (modellsvar på hash av texten),
-`approvals.json` (syntetiska notat). `tests/test_triage.py`: 86 tester; ingen modell anropas i testerna, och de
+`approvals.json` (syntetiska notat). `tests/test_triage.py`: 101 tester; ingen modell anropas i testerna, och de
 skriver bara till `tempfile`, aldrig till `data/`.
