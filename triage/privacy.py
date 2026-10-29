@@ -20,14 +20,16 @@ NAMN_MASK = "[namn-maskat]"
 TELEFON_MASK = "[telefon-maskat]"
 EPOST_MASK = "[epost-maskat]"
 IDENT_MASK = "[identifierare-maskat]"
+ORGNR_MASK = "[organisationsnummer-maskat]"
 
 MASKER = {"personnummer": MASK, "namn": NAMN_MASK, "telefon": TELEFON_MASK,
-          "epost": EPOST_MASK, "identifierare": IDENT_MASK}
+          "epost": EPOST_MASK, "identifierare": IDENT_MASK,
+          "organisationsnummer": ORGNR_MASK}
 
 # Ordning = prioritet. En kandidat som överlappar en redan accepterad träff
 # hoppas över, så att t.ex. ett tioställigt telefonnummer inte maskas som
 # personnummer. E-post går först eftersom den kan innehålla både siffror och @.
-PRIORITET = ("epost", "telefon", "personnummer", "identifierare", "namn")
+PRIORITET = ("epost", "telefon", "personnummer", "organisationsnummer", "identifierare", "namn")
 
 # Syntetiska namn ur det fiktiva exempelmaterialet. Riktiga namn ska inte ligga i
 # koden; listan är ett prov på hur namnlista + heuristik kan kombineras.
@@ -39,6 +41,10 @@ SYNTHETISKA_NAMN = ("Anna Svensson", "Erik Lindqvist", "Karin Ekström", "Lars �
 # 12 siffror bär århundradet; 10 tolkas med avgränsaren ('-' = under 100 år,
 # '+' = 100 år eller mer) och kontrollsumman (Luhn) räknas på tio siffror.
 _PERSONNUMMER = re.compile(r"(?<![\w-])(\d{4}|\d{2})(\d{2})(\d{2})([-+]?)(\d{4})(?![\w-])")
+# Organisationsnummer (Swedish organisation number): NNNNNN-NNNN, optionally prefixed "16"
+# (12-digit form used by Skatteverket). The third digit is 2 or higher, so it can never be a
+# valid personnummer month; the tenth digit is a Luhn check digit over the ten digits.
+_ORGNR = re.compile(r"(?<![\w-])(?:16)?(\d{2}[2-9]\d{3})-?(\d{4})(?![\w-])")
 _EPOST = re.compile(r"(?<![\w-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+(?![\w-])")
 # Svenska telefonnummer: 070-174 06 05, 0701740605, +46 70 174 06 05 samt fasta nummer med riktnummer (08-, 0xx-).
 # Områdesnumret måste se ut som ett svenskt område (07x mobil, 08/031/090 fast), och
@@ -136,6 +142,26 @@ def _spann_personnummer(text, idag: date | None = None):
             yield m.start(), m.end(), "personnummer", MASK
 
 
+def _giltigt_organisationsnummer(träff) -> bool:
+    return _luhn_ok(träff.group(1) + träff.group(2))
+
+
+def find_organisationsnummer(text: str) -> list[str]:
+    """Detect Swedish organisationsnummer (org number / company ID) with Luhn validation.
+
+    Alla organisationsnummer i texten, i tur ordning. Både 556677-8899-formen och den
+    tolvsiffriga 16-formen godtas; tredje siffran måste vara minst 2 och kontrollsiffran
+    stämma (Luhn), annars är det bara ett tal.
+    """
+    return [m.group(0) for m in _ORGNR.finditer(text) if _giltigt_organisationsnummer(m)]
+
+
+def _spann_organisationsnummer(text):
+    for m in _ORGNR.finditer(text):
+        if _giltigt_organisationsnummer(m):
+            yield m.start(), m.end(), "organisationsnummer", ORGNR_MASK
+
+
 def _spann_enkel(text, mönster, kategori, ersättning):
     for m in mönster.finditer(text):
         yield m.start(), m.end(), kategori, ersättning
@@ -152,6 +178,7 @@ def _kandidater(text, idag: date | None = None):
     return (_spann_enkel(text, _EPOST, "epost", EPOST_MASK),
             _spann_enkel(text, _TELEFON, "telefon", TELEFON_MASK),
             _spann_personnummer(text, idag),
+            _spann_organisationsnummer(text),
             _spann_enkel(text, _IDENT, "identifierare", IDENT_MASK),
             _spann_titel_namn(text),
             _spann_enkel(text, _NAMNLISTA, "namn", NAMN_MASK))

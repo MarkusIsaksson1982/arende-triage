@@ -1,0 +1,12 @@
+[
+ {"id": "pnr-12", "text": "Patientens personnummer 19870312-4514 syns i loggen.", "kategorier": ["personnummer"], "maskad": "Patientens personnummer [personnummer-maskat] syns i loggen."},
+ {"id": "pnr-10-utan-streck", "text": "Inloggning nekad för 8703124514 i morse.", "kategorier": ["personnummer"], "maskad": "Inloggning nekad för [personnummer-maskat] i morse."},
+ {"id": "pnr-fel-luhn", "text": "Referens 870312-4515 gäller fakturan.", "kategorier": [], "maskad": "Referens 870312-4515 gäller fakturan."},
+ {"id": "samordningsnummer", "text": "Samordningsnummer 850372-0016 kunde inte logga in.", "kategorier": ["personnummer"], "maskad": "Samordningsnummer [personnummer-maskat] kunde inte logga in."},
+ {"id": "orgnr-10", "text": "Leverantören med organisationsnummer 559901-1235 rapporterar fel i journalsystemet.", "kategorier": ["organisationsnummer"], "maskad": "Leverantören med organisationsnummer [organisationsnummer-maskat] rapporterar fel i journalsystemet."},
+ {"id": "orgnr-12-16-prefix", "text": "Faktura från 168024007778 (kommun) saknar referens.", "kategorier": ["organisationsnummer"], "maskad": "Faktura från [organisationsnummer-maskat] (kommun) saknar referens."},
+ {"id": "orgnr-utan-streck", "text": "Bolaget 9697001239 vill ha registerutdrag.", "kategorier": ["organisationsnummer"], "maskad": "Bolaget [organisationsnummer-maskat] vill ha registerutdrag."},
+ {"id": "orgnr-fel-luhn", "text": "Ordernummer 559901-1234 ska inte maskas.", "kategorier": [], "maskad": "Ordernummer 559901-1234 ska inte maskas."},
+ {"id": "orgnr-och-pnr", "text": "Firmatecknare 19870312-4514 för 559944-0012 begär åtkomst.", "kategorier": ["personnummer", "organisationsnummer"], "maskad": "Firmatecknare [personnummer-maskat] för [organisationsnummer-maskat] begär åtkomst."},
+ {"id": "telefon-ej-orgnr", "text": "Ring 070-174 06 05 om inloggningen.", "kategorier": ["telefon"], "maskad": "Ring [telefon-maskat] om inloggningen."}
+]

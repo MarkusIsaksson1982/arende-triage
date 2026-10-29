@@ -1,13 +1,15 @@
 # arende-triage
 
+**Use when** an agent needs to triage Swedish-language support tickets (ärendetriage) with rules before an LLM, and to detect and mask Swedish personnummer and organisationsnummer (PII redaction) before any text reaches the model.
+
 **English summary.** A small, offline Python demo that triages Swedish support-ticket text for a health-IT setting into
 three labels – `felaktig_inloggning` (login failure), `avvikelse_i_patientjournal` (patient-record deviation) and
 `ovrigt` (other) – and returns a self-defined JSON schema. Deterministic rules decide first; a pluggable language-model
 step may only *propose* a label when the rules are unsure; uncertain cases, all journal deviations and all access
-cases go to a human. Personal identifiers (personnummer with Luhn/century/samordningsnummer checks, names, phone
-numbers, e-mail) are masked before rules, before the model step and in all output. Human decisions are kept in a
+cases go to a human. Personal identifiers (personnummer with Luhn/century/samordningsnummer checks, organisationsnummer with
+Luhn check, names, phone numbers, e-mail) are masked before rules, before the model step and in all output. Human decisions are kept in a
 separate audit record. Standard library only, no network; the model step is a deterministic offline stub, so the
-107 tests never call a model.
+114 tests never call a model.
 
 - **Demo only, synthetic data only.** Everything in `data/` is invented. Never run real patient tickets through it.
 - **Not legal advice.** The legal references below are context for the design, not a compliance assessment.
@@ -18,7 +20,7 @@ separate audit record. Standard library only, no network; the model step is a de
   every change reviewed and accepted by a human.
 
 ```bash
-python3 -m unittest discover -s tests   # 107 tests, offline
+python3 -m unittest discover -s tests   # 114 tests, offline
 python3 -m triage matning               # metrics on the synthetic holdout
 ```
 
@@ -39,7 +41,7 @@ skarp gräns mellan regler, språkmodell och människa.
 ## Kör det
 
 ```bash
-python3 -m unittest discover -s tests          # 107 tester, offline, skriver bara till tempfile
+python3 -m unittest discover -s tests          # 114 tester, offline, skriver bara till tempfile
 python3 -m triage klass                        # klassificera data/examples.jsonl -> stdout
 python3 -m triage ko -i /tmp/beslut.jsonl      # granskningskön, med svenska etiketter
 python3 -m triage matning                      # precision/recall, konflikter, tröskelsvep
@@ -56,10 +58,10 @@ API: `from triage import triage_case`.
 
 Etiketterna har **ascii-id och svensk visning**: `felaktig_inloggning` → *Felaktig inloggning*,
 `avvikelse_i_patientjournal` → *Avvikelse i patientjournal*, `ovrigt` → *Övrigt*. Id:t används
-i JSON, fixtures och nycklar, visningen i granskningskön, mätetal och annan mänsklig läsning. Beslut (schema 1.2.0, validerat av `triage/schema.py`):
+i JSON, fixtures och nycklar, visningen i granskningskön, mätetal och annan mänsklig läsning. Beslut (schema 1.3.0, validerat av `triage/schema.py`):
 
 ```json
-{"schema_version": "1.2.0", "case_id": "syn-012", "label": "felaktig_inloggning", "label_display": "Felaktig inloggning",
+{"schema_version": "1.3.0", "case_id": "syn-012", "label": "felaktig_inloggning", "label_display": "Felaktig inloggning",
  "confidence": 0.78, "source": "modell_forslag", "needs_human_review": true, "model_status": "ok",
  "proposed_label": "felaktig_inloggning", "proposed_confidence": 0.78, "rule_top_label": "felaktig_inloggning",
  "disagreement": false, "masked_identifiers": ["personnummer"], "rationale": "Modellförslag, inväntar granskning: …",
@@ -163,12 +165,13 @@ logguppföljning: det är den rollen som avgör behörighet och följer upp åtk
 
 `mask_text()` körs före reglerna, före `model_fn` och på allt som skrivs ut. Den hittar och ersätter
 `personnummer` (`19870312-4514`, `198703124514` – 10/12 siffror; giltigt datum, rätt århundrade, Luhn och
-samordningsnummer med dagen +60), `namn` (syntetisk namnlista samt titel/roll: "dr Lindqvist", "Patient Anna
+samordningsnummer med dagen +60), `organisationsnummer` (`559901-1235`, `168024007778` – tredje siffran
+minst 2 och Luhn), `namn` (syntetisk namnlista samt titel/roll: "dr Lindqvist", "Patient Anna
 Svensson"), `telefon` (`070-174 06 05`, `+46 70 174 06 05`), `epost` (`anna.svensson@example.se`) och andra
 identifierare (`Patient-ID: AB12345`). Århundradet i tioåriget form läses mot ett referensdatum som skickas in
 utifrån (`idag`), så att både kod och tester kan utgå från samma datum.
 
-Överlappande träffar hanteras med prioritet (e-post → telefon → personnummer → identifierare → namn), så att
+Överlappande träffar hanteras med prioritet (e-post → telefon → personnummer → organisationsnummer → identifierare → namn), så att
 ett tioställigt telefonnummer inte rapporteras som personnummer. Telefonmönstret kräver ett svenskt
 områdesnummer och en grupperad abonnentdel, så att datum (`2000-02-29`), belopp (`4500,00`) och
 ordningsnummer (`1234567890`) inte maskas av en träff. Granskningsnotat maskeras innan de skrivs till
@@ -199,9 +202,28 @@ auditregistret, som är oförändrade. Här hanteras de fallen i stället enligt
 `ovrigt` med tvungen granskning och hänvisning till behörighetsansvarig, delad session och åtkomst nekad som
 inloggning med obligatorisk granskning.
 
+## Testfall för identifierare
+
+`data/identifier_fixtures.json` innehåller syntetiska fall (personnummer, samordningsnummer, organisationsnummer,
+fel kontrollsiffra, telefon) med förväntad maskad text och kategorier; `tests/test_identifiers.py` kör dem.
+Siffrorna är påhittade och Luhn-giltiga där de ska vara, men är inte kontrollerade mot Bolagsverket.
+
+## Test queries
+
+Five queries that should find this repository in a code search such as [Xerj](https://xerj.dev), with the file
+expected in the top 5 results (checked locally with `xerj code`, v1.0.0-rc.100, 2026-10-29):
+
+| Query | Expected file |
+|---|---|
+| `validate Swedish personnummer Luhn samordningsnummer` | `triage/privacy.py` |
+| `detect organisationsnummer Swedish organisation number` | `triage/privacy.py` |
+| `mask PII before sending text to the LLM` | `triage/privacy.py` |
+| `Swedish support ticket triage rules before model` | `triage/rules.py` |
+| `human review queue audit record for triage decisions` | `triage/pipeline.py` |
+
 ## Filer
 
 `triage/`: `schema.py`, `privacy.py`, `rules.py`, `model.py`, `pipeline.py`, `matning.py`, `cli.py`. `data/`:
 `examples.jsonl` (18 ärenden), `holdout.jsonl` (21 mätfall), `fixtures.json` (modellsvar på hash av texten),
-`approvals.json` (syntetiska notat). `tests/test_triage.py`: 107 tester; ingen modell anropas i testerna, och de
+`approvals.json` (syntetiska notat). `tests/test_triage.py` och `tests/test_identifiers.py`: 114 tester; ingen modell anropas i testerna, och de
 skriver bara till `tempfile`, aldrig till `data/`.

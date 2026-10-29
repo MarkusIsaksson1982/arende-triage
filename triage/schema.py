@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 import re
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 AUDIT_SCHEMA_VERSION = "1.0.0"
 LOGIN = "felaktig_inloggning"
 JOURNAL = "avvikelse_i_patientjournal"
@@ -34,7 +34,8 @@ TEXT = {"type": "string", "minLength": 1}
 CASE_ID = {"type": "string", "pattern": r"^[A-Za-z0-9_.:-]{1,64}$"}
 ISO_TID = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$"
 TIMESTAMP = {"type": "string", "pattern": ISO_TID}
-MASKED_KATEGORIER = ["personnummer", "namn", "telefon", "epost", "identifierare"]
+MASKED_KATEGORIER = ["personnummer", "namn", "telefon", "epost", "identifierare",
+                     "organisationsnummer"]
 TYPES = {"object": (dict,), "array": (list,), "string": (str,), "integer": (int,),
          "number": (int, float), "boolean": (bool,)}
 
