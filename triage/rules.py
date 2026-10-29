@@ -1,4 +1,6 @@
-"""Deterministiska regler: ingen modell, ingen slump - samma text ger samma poäng.
+"""Swedish support ticket triage rules: deterministic rules run before the model.
+
+Deterministiska regler: ingen modell, ingen slump - samma text ger samma poäng.
 
 Tre etiketter, med skarpa gränser mellan dem:
   felaktig_inloggning         autentisering och åtkomst till egen plats (lösenord,

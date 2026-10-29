@@ -1,4 +1,6 @@
-"""Dataskydd: identifierare upptäcks och maskeras FÖRE reglerna, FÖRE model_fn och i
+"""Mask PII (personnummer, organisationsnummer, names, phone, e-mail) before sending text to the LLM.
+
+Dataskydd: identifierare upptäcks och maskeras FÖRE reglerna, FÖRE model_fn och i
 alla utdata (beslut, trace, granskningskö, audit, filer).
 
 Ärendetexten är sjukvårdsdata enligt Patientdatalagen (2008:355). Personnummer,
